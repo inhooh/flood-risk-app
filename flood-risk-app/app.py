@@ -30,10 +30,11 @@ for font_file in font_files:
 fm._load_fontmanager(try_read_cache=False)
 
 # 폰트 가족 설정: NanumGothic 우선, fallback으로 DejaVuSans/sans-serif
-plt.rcParams['font.family'] = ['NanumGothic', 'DejaVuSans', 'sans-serif']
+plt.rcParams['font.family'] = ['NanumGothic']
 
 # 에러 워닝 무시 (임시, 고치면 제거)
 warnings.filterwarnings("ignore", message="findfont")
+warnings.filterwarnings("ignore", category=UserWarning, message="Font family")
 
 st.title("침수 위험 진단 서비스 (GIS & AI 프로토타입 + 기상청/시뮬레이션 침수 API 연동)")
 
@@ -82,12 +83,14 @@ if use_weather and api_key:
                 pty, rn1 = '0', '0'
                 for item in items:
                     if item.get('category') == 'PTY':
-                        pty_raw = item.get('obsrValue', '0')
+                        pty_raw = str(item.get('obsrValue') or '0')  # None/빈 → '0', str 보장
                         pty = '0' if pty_raw in ['-999', '-998'] else pty_raw
                     elif item.get('category') == 'RN1':
-                        rn1_raw = item.get('obsrValue', '0')
+                        rn1_raw = str(item.get('obsrValue') or '0')  # None/빈 → '0', str 보장
                         rn1 = '0' if rn1_raw in ['-999', '-998', '-998.9'] else rn1_raw
-                rainfall = float(rn1) if rn1 != '0' else 0.0
+                
+                # 안전한 float 변환 (None/빈 체크 추가)
+                rainfall = float(rn1) if rn1 and rn1 != '0' else 0.0
                 if pty == '0':
                     rainfall = 0.0
                     st.info("현재 무강수 (PTY=0), 1시간 후 예보 확인 추천.")
@@ -103,8 +106,20 @@ if use_weather and api_key:
                     if data_retry.get('response', {}).get('header', {}).get('resultCode') == '00':
                         # 동일 파싱 로직 (위와 반복)
                         items = data_retry.get('response', {}).get('body', {}).get('items', {}).get('item', [])
-                        # ... (pty, rn1 추출 로직 동일)
-                        rainfall = float(rn1) if rn1 != '0' else 0.0
+                        pty, rn1 = '0', '0'
+                        for item in items:
+                            if item.get('category') == 'PTY':
+                                pty_raw = str(item.get('obsrValue') or '0')  # None/빈 → '0', str 보장
+                                pty = '0' if pty_raw in ['-999', '-998'] else pty_raw
+                            elif item.get('category') == 'RN1':
+                                rn1_raw = str(item.get('obsrValue') or '0')  # None/빈 → '0', str 보장
+                                rn1 = '0' if rn1_raw in ['-999', '-998', '-998.9'] else rn1_raw
+                        
+                        # 안전한 float 변환 (None/빈 체크 추가)
+                        rainfall = float(rn1) if rn1 and rn1 != '0' else 0.0
+                        if pty == '0':
+                            rainfall = 0.0
+                            st.info("현재 무강수 (PTY=0), 1시간 후 예보 확인 추천.")
                         st.success(f"재시도 성공! 강수량: {rainfall}mm (시간: {valid_times[prev_idx]})")
                     else:
                         st.warning("재시도 실패. 슬라이더 사용.")
