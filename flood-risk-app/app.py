@@ -17,22 +17,23 @@ from modules.api import get_weather_data
 from modules.visualization import create_map, create_rainfall_chart, create_trend_chart, create_simulation_chart
 from modules.utils import calculate_risk, get_recommendations, get_past_data, get_alert_text
 
-# 한글 폰트 설정
-plt.rcParams['font.family'] = ['Malgun Gothic']
+# 한글 폰트 설정 (Malgun Gothic → NanumGothic으로 변경, Cloud 호환)
+plt.rcParams['font.family'] = ['NanumGothic', 'DejaVuSans']  # 폴백 추가
 plt.rcParams['axes.unicode_minus'] = False
+
+# 폰트 캐시 클리어 (에러 방지)
+plt.cache_clear()
 
 st.title("침수 위험 진단 서비스 (GIS & AI 프로토타입 + 기상청/시뮬레이션 침수 API 연동)")
 
-# API 키 입력 (배포 시 Secrets로 숨김 – 개발 모드만 표시)
-if st.secrets.get("dev_mode", False):  # Streamlit Cloud Secrets에서 dev_mode = True로 설정
-    st.sidebar.header("개발자 설정")
+st.sidebar.header("API 키 입력")
+if st.secrets.get("dev_mode", False):  # Cloud Secrets 우선, 로컬 fallback
     api_key = st.sidebar.text_input("기상청 API 키", value='c965d7cee76ede7e4be93efd1040a83589b93b4e5c25bd81006e81901d66b809', type="password")
     use_weather = st.sidebar.checkbox("기상청 강수량 연동", value=True)
     use_flood = st.sidebar.checkbox("시뮬레이션 침수심 연동", value=True)
 else:
-    # 배포 시 Secrets에서 키 불러옴
-    api_key = st.secrets.get("api_key", "")
-    use_weather = True  # 배포 시 기본 활성화
+    api_key = st.secrets.get("api_key", "")  # Cloud에서 불러옴
+    use_weather = True  # 로컬 기본 활성화
     use_flood = True
 
 # 사용자 입력
