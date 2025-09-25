@@ -24,17 +24,22 @@ from modules.utils import calculate_risk, get_recommendations, get_past_data, ge
 font_dir = os.path.join(os.path.dirname(__file__), 'fonts')
 font_files = fm.findSystemFonts(font_dir)
 for font_file in font_files:
-    fm.fontManager.addfont(font_file)
+    try:
+        fm.fontManager.addfont(font_file)
+    except Exception as e:
+        print(f"Font load warning: {e}")  # 디버깅용 (Cloud 로그에 출력)
 
-# 폰트 캐시 재빌드 (수정: _load_fontmanager 사용)
+# 폰트 캐시 재빌드
 fm._load_fontmanager(try_read_cache=False)
 
-# 폰트 가족 설정: NanumGothic 우선, fallback으로 DejaVuSans/sans-serif
-plt.rcParams['font.family'] = ['NanumGothic']
+# 폰트 가족 설정: NanumGothic 우선, Noto CJK / Liberation Sans / sans-serif fallback
+plt.rcParams['font.family'] = ['NanumGothic', 'Noto Sans CJK KR', 'Liberation Sans', 'sans-serif']
+plt.rcParams['axes.unicode_minus'] = False  # 마이너스 기호 깨짐 방지
 
-# 에러 워닝 무시 (임시, 고치면 제거)
+# 워닝 완전 무시 (findfont, Glyph, UserWarning 관련)
 warnings.filterwarnings("ignore", message="findfont")
-warnings.filterwarnings("ignore", category=UserWarning, message="Font family")
+warnings.filterwarnings("ignore", category=UserWarning, message="Glyph")
+warnings.filterwarnings("ignore", message="Font family")
 
 st.title("침수 위험 진단 서비스 (GIS & AI 프로토타입 + 기상청/시뮬레이션 침수 API 연동)")
 
