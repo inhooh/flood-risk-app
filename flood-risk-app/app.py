@@ -34,9 +34,52 @@ lat, lon, nx, ny, base_depth = korean_cities[selected_sido][selected_gu]
 st.write(f"선택된 지역: {selected_sido} {selected_gu} (위도: {lat}, 경도: {lon}, 격자: nx={nx}, ny={ny})")
 
 # 기상청 강수량
-rainfall = st.slider("예상 강수량 (mm)", 50, 200, 100)
+rainfall = st.slider("예상 강수량 (mm)", 50, 200, 100)  # 기본값
 if use_weather and api_key:
-    rainfall = get_weather_data(api_key, nx, ny, rainfall)
+    st.info("기상청 API 연동 중...")
+    try:
+        today = datetime.now().strftime('%Y%m%d')
+        now_hour = datetime.now().hour
+        # 유효 base_time 목록
+        valid_times = ['0200', '0500', '0800', '1100', '1400', '1700', '2000', '2300']
+        candidate_time = ((now_hour // 3) * 3) * 100
+        base_time = [t for t in valid_times if int(t) >= candidate_time][0] if candidate_time in [int(t) for t in valid_times] else valid_times[-1] if now_hour < 2 else valid_times[(now_hour // 3) % 8]
+        url = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst"
+        params = {
+            'serviceKey': api_key, 'pageNo': '1', 'numOfRows': '10', 'dataType': 'XML',
+            'base_date': today, 'base_time': base_time, 'nx': str(nx), 'ny': str(ny)
+        }
+        response = requests.get(url, params=params)
+        if response.status_code == 200:
+            root = ET.fromstring(response.content)
+            result_code = root.find('.//resultCode')
+            if result_code is not None:
+                result_code_text = result_code.text
+                if result_code_text == '00':
+                    pty, rn1 = '0', '0'
+                    for item in root.findall('.//item'):
+                        category = item.find('category')
+                        obsr_value = item.find('obsrValue')
+                        if category is not None and obsr_value is not None:
+                            if category.text == 'PTY':
+                                pty_raw = obsr_value.text
+                                pty = '0' if pty_raw in ['-999', '-998'] else pty_raw
+                            elif category.text == 'RN1':
+                                rn1_raw = obsr_value.text
+                                rn1 = '0' if rn1_raw in ['-999', '-998', '-998.9'] else rn1_raw
+                    rainfall = float(rn1) if rn1 and rn1 != 'None' else 0.0
+                    if int(pty) == 0:
+                        rainfall = 0.0
+                        st.info("현재 무강수 (PTY=0), 1시간 후 예보 확인 추천.")
+                    st.success(f"기상청 성공! 강수량: {rainfall}mm (형태: {pty}, 발표 시간: {base_time})")
+                else:
+                    st.warning("기상청 응답 오류. 슬라이더 사용.")
+            else:
+                st.warning("기상청 resultCode 없음. 슬라이더 사용.")
+        else:
+            st.error("기상청 HTTP 에러. 슬라이더 사용.")
+    except Exception as e:
+        st.error(f"기상청 실패: {str(e)}. 슬라이더 사용.")
 
 elevation = st.slider("건물 고도 (m)", 0, 50, 10)
 
