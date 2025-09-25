@@ -154,5 +154,12 @@ if st.button("위험 진단 실행"):
 with st.sidebar:
     st.header("도움말")
     st.write("- 과거 데이터: 2025년 사례 기반 테이블/차트로 위험 강조.")
-    st.write("- 지도 히트맵: 구 단위 침수심 기반 시각화.")
+    st.write("- 지도 히트맵: folium.HeatMap으로 고강수 위치 시각화.")
     st.write("- 배포: Streamlit Cloud → 아임웹 iframe 임베드.")
+
+# 공공데이터 출처 표시 (법적 의무)
+st.caption("""
+**데이터 출처**: 
+- 기상청_단기예보 (공공데이터포털): https://www.data.go.kr/data/15007722/openapi.do
+- 공공누리 "출처표시" 조건에 따라 이용. 원본 데이터 제공: 기상청.
+""")
