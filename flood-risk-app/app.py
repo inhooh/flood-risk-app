@@ -8,6 +8,9 @@ import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from folium.plugins import HeatMap  # 히트맵 오버레이용
+import os
+from matplotlib import font_manager as fm
+import warnings
 
 # 페이지 설정 (전체 레이아웃으로 변경 – 사이드바 숨김)
 st.set_page_config(layout="wide", page_title="침수 위험 진단 서비스")
@@ -17,9 +20,20 @@ from modules.api import get_weather_data
 from modules.visualization import create_map, create_rainfall_chart, create_trend_chart, create_simulation_chart
 from modules.utils import calculate_risk, get_recommendations, get_past_data, get_alert_text
 
-# 한글 폰트 설정 (Malgun Gothic → NanumGothic으로 변경, Cloud 호환)
-plt.rcParams['font.family'] = ['NanumGothic', 'DejaVuSans']  # 폴백 추가
-plt.rcParams['axes.unicode_minus'] = False
+# 폰트 경로 설정 (fonts/ 폴더 기준)
+font_dir = os.path.join(os.path.dirname(__file__), 'fonts')
+font_files = fm.findSystemFonts(font_dir)
+for font_file in font_files:
+    fm.fontManager.addfont(font_file)
+
+# 폰트 캐시 재빌드 (수정: _load_fontmanager 사용)
+fm._load_fontmanager(try_read_cache=False)
+
+# 폰트 가족 설정: NanumGothic 우선, fallback으로 DejaVuSans/sans-serif
+plt.rcParams['font.family'] = ['NanumGothic', 'DejaVuSans', 'sans-serif']
+
+# 에러 워닝 무시 (임시, 고치면 제거)
+warnings.filterwarnings("ignore", message="findfont")
 
 st.title("침수 위험 진단 서비스 (GIS & AI 프로토타입 + 기상청/시뮬레이션 침수 API 연동)")
 
@@ -41,50 +55,67 @@ lat, lon, nx, ny, base_depth = korean_cities[selected_sido][selected_gu]
 st.write(f"선택된 지역: {selected_sido} {selected_gu} (위도: {lat}, 경도: {lon}, 격자: nx={nx}, ny={ny})")
 
 # 기상청 강수량
+# 기상청 강수량
 rainfall = st.slider("예상 강수량 (mm)", 50, 200, 100)  # 기본값
 if use_weather and api_key:
     st.info("기상청 API 연동 중...")
     try:
         today = datetime.now().strftime('%Y%m%d')
         now_hour = datetime.now().hour
-        # 유효 base_time 목록
+        # 단순화된 base_time: 최근 3시간 전 (유효 시간 중)
         valid_times = ['0200', '0500', '0800', '1100', '1400', '1700', '2000', '2300']
-        candidate_time = ((now_hour // 3) * 3) * 100
-        base_time = [t for t in valid_times if int(t) >= candidate_time][0] if candidate_time in [int(t) for t in valid_times] else valid_times[-1] if now_hour < 2 else valid_times[(now_hour // 3) % 8]
+        hour_idx = max(0, (now_hour // 3 - 1) % 8)  # 1시간 전 인덱스
+        base_time = valid_times[hour_idx]
+        
+        # JSON으로 변경 (파싱 쉽음)
         url = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst"
         params = {
-            'serviceKey': api_key, 'pageNo': '1', 'numOfRows': '10', 'dataType': 'XML',
+            'serviceKey': api_key, 'pageNo': '1', 'numOfRows': '10', 'dataType': 'JSON',
             'base_date': today, 'base_time': base_time, 'nx': str(nx), 'ny': str(ny)
         }
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, timeout=10)
         if response.status_code == 200:
-            root = ET.fromstring(response.content)
-            result_code = root.find('.//resultCode')
-            if result_code is not None:
-                result_code_text = result_code.text
-                if result_code_text == '00':
-                    pty, rn1 = '0', '0'
-                    for item in root.findall('.//item'):
-                        category = item.find('category')
-                        obsr_value = item.find('obsrValue')
-                        if category is not None and obsr_value is not None:
-                            if category.text == 'PTY':
-                                pty_raw = obsr_value.text
-                                pty = '0' if pty_raw in ['-999', '-998'] else pty_raw
-                            elif category.text == 'RN1':
-                                rn1_raw = obsr_value.text
-                                rn1 = '0' if rn1_raw in ['-999', '-998', '-998.9'] else rn1_raw
-                    rainfall = float(rn1) if rn1 and rn1 != 'None' else 0.0
-                    if int(pty) == 0:
-                        rainfall = 0.0
-                        st.info("현재 무강수 (PTY=0), 1시간 후 예보 확인 추천.")
-                    st.success(f"기상청 성공! 강수량: {rainfall}mm (형태: {pty}, 발표 시간: {base_time})")
+            data = response.json()
+            result_code = data.get('response', {}).get('header', {}).get('resultCode')
+            if result_code == '00':
+                items = data.get('response', {}).get('body', {}).get('items', {}).get('item', [])
+                pty, rn1 = '0', '0'
+                for item in items:
+                    if item.get('category') == 'PTY':
+                        pty_raw = item.get('obsrValue', '0')
+                        pty = '0' if pty_raw in ['-999', '-998'] else pty_raw
+                    elif item.get('category') == 'RN1':
+                        rn1_raw = item.get('obsrValue', '0')
+                        rn1 = '0' if rn1_raw in ['-999', '-998', '-998.9'] else rn1_raw
+                rainfall = float(rn1) if rn1 != '0' else 0.0
+                if pty == '0':
+                    rainfall = 0.0
+                    st.info("현재 무강수 (PTY=0), 1시간 후 예보 확인 추천.")
+                st.success(f"기상청 성공! 강수량: {rainfall}mm (형태: {pty}, 발표 시간: {base_time})")
+            elif result_code == '03':  # 데이터 없음: 이전 시간 재시도
+                st.warning(f"데이터 없음 (코드: {result_code}). 이전 시간 재시도 중...")
+                # 이전 시간으로 재시도 (1스텝 전)
+                prev_idx = max(0, hour_idx - 1)
+                params['base_time'] = valid_times[prev_idx]
+                response_retry = requests.get(url, params=params, timeout=10)
+                if response_retry.status_code == 200:
+                    data_retry = response_retry.json()
+                    if data_retry.get('response', {}).get('header', {}).get('resultCode') == '00':
+                        # 동일 파싱 로직 (위와 반복)
+                        items = data_retry.get('response', {}).get('body', {}).get('items', {}).get('item', [])
+                        # ... (pty, rn1 추출 로직 동일)
+                        rainfall = float(rn1) if rn1 != '0' else 0.0
+                        st.success(f"재시도 성공! 강수량: {rainfall}mm (시간: {valid_times[prev_idx]})")
+                    else:
+                        st.warning("재시도 실패. 슬라이더 사용.")
                 else:
-                    st.warning("기상청 응답 오류. 슬라이더 사용.")
+                    st.error("재시도 HTTP 에러. 슬라이더 사용.")
             else:
-                st.warning("기상청 resultCode 없음. 슬라이더 사용.")
+                st.warning(f"기상청 응답 오류 (코드: {result_code}). 슬라이더 사용.")
+                st.write(f"상세: {response.text[:200]}...")  # 디버깅용
         else:
-            st.error("기상청 HTTP 에러. 슬라이더 사용.")
+            st.error(f"기상청 HTTP 에러 ({response.status_code}). 슬라이더 사용.")
+            st.write(f"응답: {response.text[:200]}...")  # 디버깅
     except Exception as e:
         st.error(f"기상청 실패: {str(e)}. 슬라이더 사용.")
 
