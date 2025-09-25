@@ -21,9 +21,6 @@ from modules.utils import calculate_risk, get_recommendations, get_past_data, ge
 plt.rcParams['font.family'] = ['NanumGothic', 'DejaVuSans']  # 폴백 추가
 plt.rcParams['axes.unicode_minus'] = False
 
-# 폰트 캐시 클리어 (에러 방지)
-plt.cache_clear()
-
 st.title("침수 위험 진단 서비스 (GIS & AI 프로토타입 + 기상청/시뮬레이션 침수 API 연동)")
 
 st.sidebar.header("API 키 입력")
