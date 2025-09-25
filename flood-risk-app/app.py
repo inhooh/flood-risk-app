@@ -9,6 +9,9 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from folium.plugins import HeatMap  # 히트맵 오버레이용
 
+# 페이지 설정 (전체 레이아웃으로 변경 – 사이드바 숨김)
+st.set_page_config(layout="wide", page_title="침수 위험 진단 서비스")
+
 from modules.data import korean_cities
 from modules.api import get_weather_data
 from modules.visualization import create_map, create_rainfall_chart, create_trend_chart, create_simulation_chart
@@ -20,11 +23,17 @@ plt.rcParams['axes.unicode_minus'] = False
 
 st.title("침수 위험 진단 서비스 (GIS & AI 프로토타입 + 기상청/시뮬레이션 침수 API 연동)")
 
-# API 설정
-st.sidebar.header("API 키 입력")
-api_key = st.sidebar.text_input("기상청 API 키", value='c965d7cee76ede7e4be93efd1040a83589b93b4e5c25bd81006e81901d66b809', type="password")
-use_weather = st.sidebar.checkbox("기상청 강수량 연동", value=True)
-use_flood = st.sidebar.checkbox("시뮬레이션 침수심 연동", value=True)
+# API 키 입력 (배포 시 Secrets로 숨김 – 개발 모드만 표시)
+if st.secrets.get("dev_mode", False):  # Streamlit Cloud Secrets에서 dev_mode = True로 설정
+    st.sidebar.header("개발자 설정")
+    api_key = st.sidebar.text_input("기상청 API 키", value='c965d7cee76ede7e4be93efd1040a83589b93b4e5c25bd81006e81901d66b809', type="password")
+    use_weather = st.sidebar.checkbox("기상청 강수량 연동", value=True)
+    use_flood = st.sidebar.checkbox("시뮬레이션 침수심 연동", value=True)
+else:
+    # 배포 시 Secrets에서 키 불러옴
+    api_key = st.secrets.get("api_key", "")
+    use_weather = True  # 배포 시 기본 활성화
+    use_flood = True
 
 # 사용자 입력
 st.header("1. 현장 정보 입력")
